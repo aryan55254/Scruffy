@@ -1,5 +1,7 @@
 #include "VM.hpp"
 
+
+
 void VM::mark(Object *object)
 {
     if (object == nullptr || object->marked)
@@ -19,6 +21,10 @@ void VM::markAll()
     for (int i = 0; i < stacksize; i++)
     {
         mark(stack[i]);
+    }
+    for (int i = 0; i < globalCount; i++)
+    {
+        mark(globals[i]);
     }
 }
 
@@ -51,29 +57,42 @@ void VM::push(Object *value)
     stack[stacksize++] = value;
 }
 
+void VM::addGlobal(Object* obj)
+{
+    assert(globalCount < GLOBAL_MAX && "Too many global roots!");
+    globals[globalCount++] = obj;
+}
+
+
 Object *VM::pop()
 {
     assert(stacksize > 0 && "Stack underflow!");
     return stack[--stacksize];
 }
 
-void VM::gc()
-{
-    int prevNumObjects = numobjects;
-
+void VM::gc_unlocked() {
+    int prev = numobjects;
     markAll();
     sweep();
-
-    // Adjust threshold dynamically
     maxobjects = numobjects == 0 ? INITIAL_GC_THRESHOLD : numobjects * 2;
 
-    std::cout << "Collected " << (prevNumObjects - numobjects)
-              << " objects, " << numobjects << " remaining.\n";
+    std::cout << "Collected "
+              << (prev - numobjects)
+              << " objects, "
+              << numobjects << " remaining.\n";
 }
+
+void VM::gc()
+{
+    std::lock_guard<std::mutex> lock(heapMutex);  
+    gc_unlocked();
+}
+
 void VM::pushInt(int value)
 {
+    std::lock_guard<std::mutex> lock(heapMutex);  
     if (numobjects == maxobjects)
-        gc();
+        gc_unlocked();
 
     IntObject *object = new IntObject(value);
     object->next = firstobject;
@@ -85,14 +104,30 @@ void VM::pushInt(int value)
 
 void VM::pushPair()
 {
+    std::lock_guard<std::mutex> lock(heapMutex);  
     if (numobjects == maxobjects)
-        gc();
+        gc_unlocked();
 
     // Pop the two objects that will form the pair
     Object *tail = pop();
     Object *head = pop();
 
     PairObject *object = new PairObject(head, tail);
+    object->next = firstobject;
+    firstobject = object;
+
+    numobjects++;
+    push(object);
+}
+
+void VM::pushString(const std::string& value)
+{
+    std::lock_guard<std::mutex> lock(heapMutex);  
+    if (numobjects == maxobjects)
+        gc_unlocked();
+
+    StringObject* object = new StringObject(value);
+
     object->next = firstobject;
     firstobject = object;
 
