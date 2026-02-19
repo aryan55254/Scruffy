@@ -1,9 +1,12 @@
 #pragma once
 
+#include <string>
+
 enum class ObjectType
 {
     INT, 
-    PAIR
+    PAIR, 
+    STRING,
 };
 
 struct Object
@@ -27,4 +30,10 @@ struct PairObject : public Object
     Object *head;
     Object *tail;
     PairObject(Object *head, Object *tail) : Object(ObjectType ::PAIR), head(head), tail(tail) {}
+};
+
+struct StringObject : public Object {
+    std::string value;
+    StringObject(const std::string& v)
+        : Object(ObjectType::STRING), value(v) {}
 };
